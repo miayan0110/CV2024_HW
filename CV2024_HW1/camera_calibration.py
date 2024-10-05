@@ -90,7 +90,7 @@ print("==="*20)
 """Calculate H"""
 # """
 # calculate A_i
-# def get_Ai2(obj_ps, img_ps, sample_n=11):
+# def get_Ai(obj_ps, img_ps, sample_n=11):
 #     sample_idx = random.sample(range(len(obj_ps)), sample_n)
 #     A_i = []
 #     for idx in sample_idx:
@@ -178,8 +178,8 @@ V = get_V(H)
 # calculate b (b11, b12, b13, b22, b23, b33)
 u, s, vt = np.linalg.svd(V)
 b = vt[-1, :]
-# b11, b12, b22, b13, b23, b33 = b[0], b[1], b[2], b[3], b[4], b[5]
-b11, b12, b22, b13, b23, b33 = b
+b11, b12, b22, b13, b23, b33 = b[0], b[1], b[2], b[3], b[4], b[5]
+# b11, b12, b22, b13, b23, b33 = b
 
 
 # calculate intrinsics
@@ -194,17 +194,17 @@ K = np.array([[alpha,   0,   o_x],
               [0,     beta,  o_y],
               [0,     0,     1]])
 
-print("Intrinsic :")
-print(K)
-print(mtx)
-print("==="*20)
+# print("Intrinsic :")
+# print(K)
+# print(mtx)
+# print("==="*20)
 # """
 # =================================================================
 """Calculate Extrinsics"""
 # """
 # calculate Extrinsic (R t)
 extrinsics = []
-print("Extrinsic : ")
+# print("Extrinsic : ")
 for H_i in H:
     h1 = H_i[:, 0]
     h2 = H_i[:, 1]
@@ -228,6 +228,7 @@ extrinsics = np.array(extrinsics)
 # """
 ################################################################################################################################
 """Turn [R t] Matrix Into Rvecs and Tvecs"""
+
 """
 def rotation_matrix_to_rodrigues(R):
     theta = np.arccos((np.trace(R) - 1) / 2)
