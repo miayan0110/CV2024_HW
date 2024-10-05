@@ -71,6 +71,7 @@ extrinsics = np.concatenate((Vr, Tr), axis=1).reshape(-1,6)
 # print(extrinsics.shape)
 print(extrinsics)
 """
+# Calculate H using cv2 function
 # H, _ = cv2.findHomography(np.array(objpoints)[0], np.array(imgpoints)[0])
 # print(np.array(H))
 """
@@ -89,21 +90,21 @@ print("==="*20)
 """Calculate H"""
 # """
 # calculate A_i
-def get_Ai(obj_ps, img_ps, sample_n=11):
-    sample_idx = random.sample(range(len(obj_ps)), sample_n)
-    A_i = []
-    for idx in sample_idx:
-        X = obj_ps[idx][0]
-        Y = obj_ps[idx][1]
-        u = img_ps[idx][0][0]
-        v = img_ps[idx][0][1]
-        A_row1 = [X, Y, 1, 0, 0, 0, -X * u, -Y * u, -u]
-        A_row2 = [0, 0, 0, X, Y, 1, -X * v, -Y * v, -v]
-        A_i.append(A_row1)
-        A_i.append(A_row2)
-    return np.array(A_i)
+# def get_Ai2(obj_ps, img_ps, sample_n=11):
+#     sample_idx = random.sample(range(len(obj_ps)), sample_n)
+#     A_i = []
+#     for idx in sample_idx:
+#         X = obj_ps[idx][0]
+#         Y = obj_ps[idx][1]
+#         u = img_ps[idx][0][0]
+#         v = img_ps[idx][0][1]
+#         A_row1 = [X, Y, 1, 0, 0, 0, -X * u, -Y * u, -u]
+#         A_row2 = [0, 0, 0, X, Y, 1, -X * v, -Y * v, -v]
+#         A_i.append(A_row1)
+#         A_i.append(A_row2)
+#     return np.array(A_i)
 
-def get_Ai2(obj_ps, img_ps):
+def get_Ai(obj_ps, img_ps):
     A_i = []
     for obj_p, img_p in zip(obj_ps, img_ps):
         X = obj_p[0]
@@ -119,14 +120,13 @@ def get_Ai2(obj_ps, img_ps):
 # calculate H
 H = []
 for i in range(0, len(objpoints)):
-    A_i = get_Ai2(objpoints[i], imgpoints[i])
+    A_i = get_Ai(objpoints[i], imgpoints[i])
     u, s, vt = np.linalg.svd(A_i)
     h_i = vt[-1, :]
     h_i = h_i / h_i[-1] # consider scale coef
     H.append(h_i.reshape((3,3)))
 H = np.array(H)
 # print(H.shape)
-# print('H[0]:')
 # print(H[0])
 # """
 # =================================================================
@@ -143,6 +143,7 @@ def v_pq(H_i, p, q):
         H_i[2, p] * H_i[2, q]
     ])
     return v
+
 def v_ij(h_i, h_j):
     return np.array([
         h_i[0] * h_j[0],
@@ -157,14 +158,18 @@ def v_ij(h_i, h_j):
 def get_V(H):
     V = []
     for H_i in H:
+        # method 1
         v12 = v_pq(H_i, 0, 1)
         v11 = v_pq(H_i, 0, 0)
         v22 = v_pq(H_i, 1, 1)
+
+        # # method 2
         # h1 = H_i[:, 0]
         # h2 = H_i[:, 1]
         # v12 = v_ij(h1, h2)
         # v11 = v_ij(h1, h1)
         # v22 = v_ij(h2, h2)
+
         V.append(v12)
         V.append((v11 - v22))
     return np.array(V)
@@ -173,8 +178,8 @@ V = get_V(H)
 # calculate b (b11, b12, b13, b22, b23, b33)
 u, s, vt = np.linalg.svd(V)
 b = vt[-1, :]
-b11, b12, b22, b13, b23, b33 = b[0], b[1], b[2], b[3], b[4], b[5]
-# b11, b12, b22, b13, b23, b33 = b
+# b11, b12, b22, b13, b23, b33 = b[0], b[1], b[2], b[3], b[4], b[5]
+b11, b12, b22, b13, b23, b33 = b
 
 
 # calculate intrinsics
@@ -189,9 +194,9 @@ K = np.array([[alpha,   0,   o_x],
               [0,     beta,  o_y],
               [0,     0,     1]])
 
-# print("Intrinsic :")
-# print(K)
-# print(mtx)
+print("Intrinsic :")
+print(K)
+print(mtx)
 print("==="*20)
 # """
 # =================================================================
@@ -206,23 +211,12 @@ for H_i in H:
     h3 = H_i[:, 2]
     K_inv = np.linalg.inv(K)
 
-    # method 1
-    extrinsic_params = np.dot(K_inv, H_i)
-    r_1 = extrinsic_params[:, 0]
-    r_2 = extrinsic_params[:, 1]
-    t = extrinsic_params[:, 2]
-    r_1_norm = r_1 / np.linalg.norm(r_1)
-    r_2_norm = r_2 / np.linalg.norm(r_2)
-    r_3 = np.cross(r_1_norm, r_2_norm)
-    R = np.column_stack((r_1_norm, r_2_norm, r_3))
-
-    # # method 2
-    # lambda_ = 1 / np.linalg.norm(np.dot(K_inv, h1))
-    # r1 = lambda_ * np.dot(K_inv, h1)
-    # r2 = lambda_ * np.dot(K_inv, h2)
-    # r3 = np.cross(r1, r2)
-    # R = np.column_stack((r1, r2, r3))
-    # t = lambda_ * np.dot(K_inv, h3)
+    lambda_ = 1 / np.linalg.norm(np.dot(K_inv, h1))
+    r1 = lambda_ * np.dot(K_inv, h1)
+    r2 = lambda_ * np.dot(K_inv, h2)
+    r3 = np.cross(r1, r2)
+    R = np.column_stack((r1, r2, r3))
+    t = lambda_ * np.dot(K_inv, h3)
 
     extrinsics.append(np.column_stack((R, t)))
     
@@ -233,7 +227,8 @@ extrinsics = np.array(extrinsics)
 # print(extrinsics[0])
 # """
 ################################################################################################################################
-# """
+"""Turn [R t] Matrix Into Rvecs and Tvecs"""
+"""
 def rotation_matrix_to_rodrigues(R):
     theta = np.arccos((np.trace(R) - 1) / 2)
     if theta < 1e-6:
@@ -257,7 +252,7 @@ def convert_rt_to_extrinsics(Rt_matrices):
 rvecs, tvecs = convert_rt_to_extrinsics(extrinsics)
 extrinsics = np.concatenate((rvecs, tvecs), axis=1).reshape(-1,6)
 print(extrinsics)
-# """
+"""
 ################################################################################################################################
 
 print('Show the camera extrinsics')
