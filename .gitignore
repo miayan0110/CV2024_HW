@@ -1,5 +1,6 @@
 # ignore all these type of files in every folder
 *.pyc
+*.zip
 
 # ignore specific files in some folders
 CV2024_HW1/example
