@@ -5,7 +5,6 @@ import random
 import matplotlib.pyplot as plt
 import camera_calibration_show_extrinsics as show
 from PIL import Image
-# from mpl_toolkits.mplot3d import axes3d, Axes3D
 
 # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
 # (8,6) is for the given testing images.
@@ -22,7 +21,6 @@ imgpoints = [] # 2d points in image plane.
 
 # Make a list of calibration images
 images = glob.glob('data/*.jpg')
-# images = glob.glob('data/0000.jpg')
 
 # Step through the list and search for chessboard corners
 print('Start finding chessboard corners...')
@@ -68,42 +66,13 @@ ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, img_siz
 Vr = np.array(rvecs) # rotation vector
 Tr = np.array(tvecs) # translation vector
 extrinsics = np.concatenate((Vr, Tr), axis=1).reshape(-1,6)
-# print(extrinsics.shape)
-print(extrinsics)
 """
-# Calculate H using cv2 function
-# H, _ = cv2.findHomography(np.array(objpoints)[0], np.array(imgpoints)[0])
-# print(np.array(H))
+
 """
 Write your code here
 """
 ################################################################################################################################
-"""
-N_obj_ps = np.array(objpoints)
-N_img_ps = np.array(imgpoints)
-print("==="*20)
-print("Data shape (3D obj), (2D img) : ")
-print(N_obj_ps.shape, N_img_ps.shape)
-print("==="*20)
-"""
-# =================================================================
 """Calculate H"""
-# """
-# calculate A_i
-# def get_Ai(obj_ps, img_ps, sample_n=11):
-#     sample_idx = random.sample(range(len(obj_ps)), sample_n)
-#     A_i = []
-#     for idx in sample_idx:
-#         X = obj_ps[idx][0]
-#         Y = obj_ps[idx][1]
-#         u = img_ps[idx][0][0]
-#         v = img_ps[idx][0][1]
-#         A_row1 = [X, Y, 1, 0, 0, 0, -X * u, -Y * u, -u]
-#         A_row2 = [0, 0, 0, X, Y, 1, -X * v, -Y * v, -v]
-#         A_i.append(A_row1)
-#         A_i.append(A_row2)
-#     return np.array(A_i)
-
 def get_Ai(obj_ps, img_ps):
     A_i = []
     for obj_p, img_p in zip(obj_ps, img_ps):
@@ -126,12 +95,8 @@ for i in range(0, len(objpoints)):
     h_i = h_i / h_i[-1] # consider scale coef
     H.append(h_i.reshape((3,3)))
 H = np.array(H)
-# print(H.shape)
-# print(H[0])
-# """
 # =================================================================
 """Calculate Intrinsic"""
-# """
 # calculate V
 def v_pq(H_i, p, q):
     v = np.array([
@@ -144,31 +109,12 @@ def v_pq(H_i, p, q):
     ])
     return v
 
-def v_ij(h_i, h_j):
-    return np.array([
-        h_i[0] * h_j[0],
-        h_i[0] * h_j[1] + h_i[1] * h_j[0],
-        h_i[1] * h_j[1],
-        h_i[2] * h_j[0] + h_i[0] * h_j[2],
-        h_i[2] * h_j[1] + h_i[1] * h_j[2],
-        h_i[2] * h_j[2]
-    ])
-
-
 def get_V(H):
     V = []
     for H_i in H:
-        # method 1
         v12 = v_pq(H_i, 0, 1)
         v11 = v_pq(H_i, 0, 0)
         v22 = v_pq(H_i, 1, 1)
-
-        # # method 2
-        # h1 = H_i[:, 0]
-        # h2 = H_i[:, 1]
-        # v12 = v_ij(h1, h2)
-        # v11 = v_ij(h1, h1)
-        # v22 = v_ij(h2, h2)
 
         V.append(v12)
         V.append((v11 - v22))
@@ -179,8 +125,6 @@ V = get_V(H)
 u, s, vt = np.linalg.svd(V)
 b = vt[-1, :]
 b11, b12, b22, b13, b23, b33 = b[0], b[1], b[2], b[3], b[4], b[5]
-# b11, b12, b22, b13, b23, b33 = b
-
 
 # calculate intrinsics
 o_y = (b12 * b13 - b11 * b23) / (b11 * b22 - b12**2)
@@ -193,18 +137,10 @@ o_x = gamma * o_y / beta - b13 * alpha**2 / lamb
 K = np.array([[alpha,   0,   o_x],
               [0,     beta,  o_y],
               [0,     0,     1]])
-
-# print("Intrinsic :")
-# print(K)
-# print(mtx)
-# print("==="*20)
-# """
 # =================================================================
 """Calculate Extrinsics"""
-# """
 # calculate Extrinsic (R t)
 extrinsics = []
-# print("Extrinsic : ")
 for H_i in H:
     h1 = H_i[:, 0]
     h2 = H_i[:, 1]
@@ -219,51 +155,15 @@ for H_i in H:
     t = lambda_ * np.dot(K_inv, h3)
 
     extrinsics.append(np.column_stack((R, t)))
-    
-    # print(R)
-    # print(t)
-    # print("---"*20)
 extrinsics = np.array(extrinsics)
-# print(extrinsics[0])
-# """
-################################################################################################################################
-"""Turn [R t] Matrix Into Rvecs and Tvecs"""
-
-"""
-def rotation_matrix_to_rodrigues(R):
-    theta = np.arccos((np.trace(R) - 1) / 2)
-    if theta < 1e-6:
-        return np.zeros((3,))
-    K = (R - R.T) / (2 * np.sin(theta))
-    rvec = np.array([K[2, 1], K[0, 2], K[1, 0]]) * theta
-    return rvec
-
-def convert_rt_to_extrinsics(Rt_matrices):
-    rvecs = []
-    tvecs = []
-    for Rt in Rt_matrices:
-        R = Rt[:, :3]
-        t = Rt[:, 3]
-        
-        rvec = rotation_matrix_to_rodrigues(R)
-        rvecs.append(rvec)
-        tvecs.append(t)
-    return np.array(rvecs), np.array(tvecs)
-
-rvecs, tvecs = convert_rt_to_extrinsics(extrinsics)
-extrinsics = np.concatenate((rvecs, tvecs), axis=1).reshape(-1,6)
-print(extrinsics)
-"""
 ################################################################################################################################
 
 print('Show the camera extrinsics')
 
-# """
 # plot setting
 # You can modify it for better visualization
 fig = plt.figure(figsize=(10, 10))
 ax = fig.add_subplot(projection='3d')
-# ax = Axes3D(fig)
 
 # camera setting
 camera_matrix = mtx
@@ -309,5 +209,5 @@ for angle in range(0, 360):
     ax.view_init(30, angle)
     plt.draw()
     plt.pause(.001)
-# """
+
 
