@@ -48,8 +48,9 @@ def gaussian_filter(image, D0, filter_type='low'):
     
     return filtered_image
 
-def show_image(img):
-    Image.fromarray(img).show()
+def show_image(img, path):
+    image = Image.fromarray(img)
+    image.save(os.path.join('output', path))
 
 def read_image(path):
     image = cv2.imread(path)    # reads image in BGR format
@@ -57,17 +58,9 @@ def read_image(path):
     return image
 
 if __name__ == '__main__':
-    # image1 = cv2.imread('data/task1and2_hybrid_pyramid/1_bicycle.bmp')
-    # image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
-    # image2 = cv2.imread('data/task1and2_hybrid_pyramid/1_motorcycle.bmp')
-    # image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
-    # hybrid_img = hybrid_image(image1, image2, D0_low=30, D0_high=30)
-    # show_image(hybrid_img)
-
     image_paths = glob.glob('data/task1and2_hybrid_pyramid/*')
     for i in range(0, len(image_paths)-1, 2):
         image1 = read_image(image_paths[i+1])
         image2 = read_image(image_paths[i])
         hybrid_img = hybrid_image(image1, image2, D0_low=30, D0_high=30)
-        hybrid_pil = Image.fromarray(hybrid_img)
-        hybrid_pil.show(title="Hybrid Image")
+        show_image(hybrid_img, f'hybrid_output_{int(i/2)}.png')
