@@ -43,11 +43,11 @@ def main(data_path, save_path):
     # plt.show()
 
 if __name__ == '__main__':
-    img_list = os.listdir(r'./task3_colorizing/custom')
+    img_list = os.listdir(r'./my_data/task3_colorizing')
     
     for img_name in img_list:
         print(f'Processing : {img_name}')
         save_img = img_name.split('.')[0]
         save_path = rf'./out/{save_img}.jpg'
-        main(data_path=rf'./task3_colorizing/custom/{img_name}', 
+        main(data_path=rf'./my_data/task3_colorizing/{img_name}', 
              save_path=save_path)

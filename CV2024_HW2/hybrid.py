@@ -48,9 +48,9 @@ def gaussian_filter(image, D0, filter_type='low'):
     
     return filtered_image
 
-def show_image(img, path):
+def save_image(img, path):
     image = Image.fromarray(img)
-    image.save(os.path.join('output', path))
+    image.save(os.path.join('output/task1_hybrid', path))
 
 def read_image(path):
     image = cv2.imread(path)    # reads image in BGR format
@@ -58,11 +58,11 @@ def read_image(path):
     return image
 
 if __name__ == '__main__':
-    image_paths = glob.glob('data/task1and2_hybrid_pyramid/*')  # use TA's data
-    # image_paths = glob.glob('my_data/task1_hybrid/*')  # use our data
+    # image_paths = glob.glob('data/task1and2_hybrid_pyramid/*')  # use TA's data
+    image_paths = glob.glob('my_data/task1and2_hybrid_pyramid/*')  # use our data
     for i in range(0, len(image_paths)-1, 2):
         image1 = read_image(image_paths[i+1])
         image2 = read_image(image_paths[i])
         hybrid_img = hybrid_image(image1, image2, D0_low=15, D0_high=15)
-        show_image(hybrid_img, f'hybrid_output_{int(i/2)}.png')   # show results of TA's data
-        # show_image(hybrid_img, f'hybrid_output_mydata_{int(i/2)}.png')    # show results of our data
+        # save_image(hybrid_img, f'TA_data/hybrid_output_{int(i/2)}.png')   # save results of TA's data
+        save_image(hybrid_img, f'cus_data/hybrid_output_{int(i/2)}.png')    # save results of our data
