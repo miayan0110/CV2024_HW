@@ -1,42 +1,92 @@
 import cv2
-import glob
-import os
 import numpy as np
 import matplotlib.pyplot as plt
+import math
 import random
+from scipy.ndimage import gaussian_filter
+import argparse
 
-def sift_feature_detection(img1, img2):
-    sift = cv2.SIFT_create()
-    kp1, des1 = sift.detectAndCompute(img1, None)
-    kp2, des2 = sift.detectAndCompute(img2, None)
-    return kp1, des1, kp2, des2
 
-def feature_mapping(des1, des2, ratio=0.75):
-    matches = []
-    for i, des1i in enumerate(des1):
-        distances = np.linalg.norm(des2 - des1i, axis=1)
-        min_idx = np.argpartition(distances, 2)[:2]
-        min_dis, second_min_dis = distances[min_idx[0]], distances[min_idx[1]]
+def edge_blending(wrap_img, H):
+    inv_H = np.linalg.inv(H)
+    for i in range(wrap_img.shape[0]):
+        for j in range(wrap_img.shape[1]):
+            coor = np.array([j, i, 1])
+            img_right_coor = inv_H @ coor  # the coor of right image
+            img_right_coor /= img_right_coor[2]
 
-        if min_dis < ratio*second_min_dis:
-            matches.append((i, min_idx[0]))
-    return matches
+            # Interpolation
+            y, x = int(round(img_right_coor[0])), int(round(img_right_coor[1]))
 
-def homomat(points_in_img1, points_in_img2, threshold=5):
+            if x == 0:
+                # Apply Gaussian filter for edge blending
+                wrap_img[i, j] = gaussian_filter(wrap_img[i, j], sigma=2)
+    return wrap_img
+
+
+def wrapping(img1, img2, H):
+    (h1, w1) = img1.shape[:2]
+    (h2, w2) = img2.shape[:2]
+    wrap_img = np.zeros((max(h1, h2), w1+w2, 3), dtype="int")
+    wrap_img[:h1, :w1] = img1
+
+    # Transform left corr to right, and reproject to warped image
+    inv_H = np.linalg.inv(H)
+    for i in range(wrap_img.shape[0]):
+        for j in range(wrap_img.shape[1]):
+            coor = np.array([j, i, 1])  #
+            img_right_coor = inv_H @ coor  # the coor of right image
+            img_right_coor /= img_right_coor[2]
+
+            # interpolation
+            y, x = int(round(img_right_coor[0])), int(round(img_right_coor[1]))
+            if (x < 0 or x >= h2 or y < 0 or y >= w2):
+                continue
+            # wrap pixel
+            # wrap_img[i, j] = img2[x, y]
+            alpha = max(0, min(1, (w1 - j) / float(w1)))
+            if (wrap_img[i, j][0] == 0) and (wrap_img[i, j][1] == 0) and (wrap_img[i, j][2] == 0):
+                wrap_img[i, j] = img2[x, y]
+            else:
+                wrap_img[i, j] = (wrap_img[i, j] * alpha +
+                                  img2[x, y] * (1 - alpha)).astype(int)
+
+    wrap_img = edge_blending(wrap_img, H)
+    return wrap_img
+
+
+def save_match(image1, image2, keypoints1, keypoints2, matches, name):
+    # Draw matches
+    matched_image = cv2.drawMatches(image1, keypoints1, image2, keypoints2,
+                                    [cv2.DMatch(
+                                        _queryIdx=i, _trainIdx=j, _imgIdx=0, _distance=0) for i, j in matches],
+                                    None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+
+    # Convert BGR to RGB for displaying with matplotlib
+    matched_image_rgb = cv2.cvtColor(matched_image, cv2.COLOR_BGR2RGB)
+    plt.imsave(f"{name}_match.jpg", matched_image_rgb)
+
+
+def homomat(points_in_img1, points_in_img2, sampling_point=4, threshold=5, S=1500):
     max_inliers = 0
     best_H = None
 
-    for _ in range(1000):
-        sample_indices = np.random.choice(len(points_in_img1), 4, replace=False)
-        pts1 = points_in_img1[sample_indices]
-        pts2 = points_in_img2[sample_indices]
-        
+    for _ in range(S):
+        if len(points_in_img1) > sampling_point:
+            sample_indices = np.random.choice(
+                len(points_in_img1), sampling_point, replace=False)
+            pts1 = points_in_img1[sample_indices]
+            pts2 = points_in_img2[sample_indices]
+        else:
+            pts1 = points_in_img1
+            pts2 = points_in_img2
+
         H = homography(pts1, pts2)
 
         inliers = 0
-        for (x1, y1), (x2, y2) in zip(pts1, pts2):
+        for (x1, y1), (x2, y2) in zip(points_in_img1, points_in_img2):
             pred = np.dot(H, np.array([x1, y1, 1]))
-            pred /= pred[2] # normalize
+            pred /= pred[2]  # normalize
             error = np.linalg.norm(np.array([x2, y2]) - pred[:2])
             if error < threshold:
                 inliers += 1
@@ -45,6 +95,7 @@ def homomat(points_in_img1, points_in_img2, threshold=5):
             max_inliers = inliers
             best_H = H
     return best_H
+
 
 def homography(pts1, pts2):
     A = []
@@ -57,65 +108,125 @@ def homography(pts1, pts2):
     H = H/H[2, 2]   # Normalize to ensure H[2,2] is 1
     return H
 
-# def wrap(img1, img2, H):
-#     return result
 
-def stitch_images(img1, img2, gray1, gray2, i):
-    kp1, des1, kp2, des2 = sift_feature_detection(gray1, gray2)
-    plot_keypoints(gray1, gray2, kp1, kp2, i)
-    matches = feature_mapping(des1, des2)
-    plot_matches(img1, img2, kp1, kp2, matches, i)
+def get_keypoint(img1, img2, method='SIFT'):
+    img1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
+    img2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
 
-    # Get point coordinates based on matches
-    points_in_img1 = np.float32([kp1[i].pt for i, _ in matches])
-    points_in_img2 = np.float32([kp2[j].pt for _, j in matches])
+    if method == 'SIFT':
+        detector = cv2.SIFT_create()
+        keypoints1, descriptors1 = detector.detectAndCompute(img1, None)
+        keypoints2, descriptors2 = detector.detectAndCompute(img2, None)
+    elif method == 'MSER':
+        detector = cv2.MSER_create()
+        keypoints1 = detector.detect(img1)
+        keypoints2 = detector.detect(img2)
 
-    # Calculate homography
-    H = homomat(points_in_img1, points_in_img2)
+        sift = cv2.SIFT_create()
+        keypoints1, descriptors1 = sift.compute(img1, keypoints1)
+        keypoints2, descriptors2 = sift.compute(img2, keypoints2)
+    elif method == 'HARRIS':
+        keypoints1 = harris_corner_detector(img1)
+        keypoints2 = harris_corner_detector(img2)
 
-    # Wrap images
-    result = wrap(img1, img2, H)
-    return result
+        sift = cv2.SIFT_create()
+        keypoints1, descriptors1 = sift.compute(img1, keypoints1)
+        keypoints2, descriptors2 = sift.compute(img2, keypoints2)
+    else:
+        raise ValueError(f"Unsupported method: {method}. Choose from 'SIFT', 'MSER', or 'HARRIS'.")
 
-def plot_keypoints(img1, img2, kp1, kp2, i):
-    img1 = cv2.drawKeypoints(img1, kp1, img1)
-    img2 = cv2.drawKeypoints(img2, kp2, img2)
-    img = np.concatenate((img1, img2), axis=1)
-    cv2.imwrite(os.path.join('output/keypoints', f'keypoints_{i//2}.jpg'), img)
+    img1_keypoints = cv2.drawKeypoints(
+        img1, keypoints1, None, flags=cv2.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
+    img2_keypoints = cv2.drawKeypoints(
+        img2, keypoints2, None, flags=cv2.DrawMatchesFlags_DRAW_RICH_KEYPOINTS)
 
-def plot_matches(img1, img2, kp1, kp2, matches, x):
-    if len(img1.shape) == 2:
-        img1 = cv2.cvtColor(img1, cv2.COLOR_GRAY2BGR)
-        img2 = cv2.cvtColor(img2, cv2.COLOR_GRAY2BGR)
+    combined_img = cv2.hconcat([img1_keypoints, img2_keypoints])
+    cv2.imwrite('img_keypoint.jpg', combined_img)
+    print("img_keypoint.jpg saved")
 
-    img1_with_border = np.zeros((img1.shape[0], img1.shape[1] + img2.shape[1], 3), dtype=np.uint8)
-    img1_with_border[:img1.shape[0], :img1.shape[1]] = img1
-    img1_with_border[:img2.shape[0], img1.shape[1]:] = img2
-    
-    img1_with_border = cv2.cvtColor(img1_with_border, cv2.COLOR_BGR2RGB)
-
-    plt.figure(figsize=(15, 10))
-    plt.imshow(img1_with_border)
-    
-    for i, j in matches:
-        pt1 = (int(kp1[i].pt[0]), int(kp1[i].pt[1]))
-        pt2 = (int(kp2[j].pt[0] + img1.shape[1]), int(kp2[j].pt[1]))
-        random_color = (random.random(), random.random(), random.random())
-        plt.plot([pt1[0], pt2[0]], [pt1[1], pt2[1]], random_color, linewidth=0.5)
-
-    plt.axis('off')
-    plt.savefig(os.path.join('output/matches', f'matches_{x//2}.jpg'), bbox_inches='tight', pad_inches=0)
-    plt.close()
+    return [keypoints1, descriptors1], [keypoints2, descriptors2]
 
 
+def harris_corner_detector(img):
+    dst = cv2.cornerHarris(img, blockSize=2, ksize=3, k=0.04)
+    dst = cv2.dilate(dst, None)
 
-if __name__ == '__main__':
-    img_path = glob.glob('data/*')
-    for i in range(0, len(img_path)-1, 2):
-        print(f'processing image {i//2 + 1}...')
-        img1 = cv2.imread(img_path[i])
-        img2 = cv2.imread(img_path[i+1])
-        gray1 = cv2.cvtColor(img1, cv2.COLOR_RGB2GRAY)
-        gray2 = cv2.cvtColor(img2, cv2.COLOR_RGB2GRAY)
-        result = stitch_images(img1, img2, gray1, gray2, i)
-        cv2.imwrite(os.path.join('output', f'stitched_image_{i//2}.jpg'), result)
+    keypoints = []
+    threshold = 0.01 * dst.max()
+    for y in range(dst.shape[0]):
+        for x in range(dst.shape[1]):
+            if dst[y, x] > threshold:
+                keypoints.append(cv2.KeyPoint(x, y, 1))
+    return keypoints
+
+
+def match_keypoints(descriptors1, descriptors2, threshold=0.5):
+    best_score_pairs = []
+    best_index_pairs = []
+    for i in range(len(descriptors1)):
+        best_scores = [float('inf'), float('inf')]
+        best_index = [0, 0]
+        for j in range(len(descriptors2)):
+            score = np.linalg.norm(descriptors1[i] - descriptors2[j])
+            if score < best_scores[0]:
+                best_scores[1] = best_scores[0]
+                best_index[1] = best_index[0]
+                best_scores[0] = score
+                best_index[0] = j
+            elif score < best_scores[1]:
+                best_scores[1] = score
+                best_index[1] = j
+        best_score_pairs.append(best_scores)
+        best_index_pairs.append(best_index)
+
+    final_index_pairs = []
+    for i in range(len(best_index_pairs)):
+        score = best_score_pairs[i][0] / best_score_pairs[i][1]
+        if score < threshold:
+            final_index_pairs.append((i, best_index_pairs[i][0]))
+    print("Length of good match:", len(final_index_pairs))
+
+    return final_index_pairs
+
+
+def stitch_images(image1, image2, name, method='SIFT', sampling_point=4, threshold=0.5):
+    key1, key2 = get_keypoint(image1, image2, method=method)
+    key_index = match_keypoints(key1[1], key2[1], threshold)
+
+    points_in_img1 = np.float32([key1[0][i].pt for i, _ in key_index])
+    points_in_img2 = np.float32([key2[0][j].pt for _, j in key_index])
+
+    H = homomat(points_in_img2, points_in_img1,
+                sampling_point, S=1500, threshold=5)
+    warped_image = wrapping(image1, image2, H)
+    cv2.imwrite(f"{name}_{method}.jpg", warped_image)
+    save_match(image1, image2, key1[0], key2[0], key_index, f"{name}_{method}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Image Stitching with different feature detection methods.')
+    parser.add_argument(
+        '--image1', type=str, default='data/hill1.JPG', help='Path to the first image')
+    parser.add_argument(
+        '--image2', type=str,  default='data/hill2.JPG', help='Path to the second image')
+    parser.add_argument('--output_name', type=str, default='hill',
+                        help='Name for the output stitched image')
+    parser.add_argument('--method', type=str, default='SIFT', choices=['SIFT',  'HARRIS', 'MSER'],
+                        help='Feature detection method to use for stitching (default: SIFT)')
+    parser.add_argument('--sampling_point', type=int, default=4,
+                        help='Number of sampling points for homography estimation (default: 4)')
+    parser.add_argument('--threshold', type=float, default=0.5,
+                        help='Threshold for feature matching (default: 0.5)')
+
+    args = parser.parse_args()
+
+    image1 = cv2.imread(args.image1)
+    image2 = cv2.imread(args.image2)
+
+    stitch_images(image1, image2, args.output_name, method=args.method,
+                  sampling_point=args.sampling_point, threshold=args.threshold)
+
+
+if __name__ == "__main__":
+    main()
