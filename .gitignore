@@ -4,6 +4,7 @@
 
 # ignore specific files in some folders
 CV2024_HW1/example
+CV2024_HW1/new_data
 
 CV2024_HW3/main1.py
 CV2024_HW3/main2.py
